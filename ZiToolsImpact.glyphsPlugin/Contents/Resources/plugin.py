@@ -1,10 +1,11 @@
 # encoding: utf-8
 from __future__ import division, print_function, unicode_literals
 import objc
+import time
 import webbrowser
 from GlyphsApp import *
 from GlyphsApp.plugins import *
-from AppKit import NSApp, NSButton
+from AppKit import NSApp, NSButton, NSEvent
 
 objc_NSObject = objc.lookUpClass("NSObject")
 
@@ -69,10 +70,25 @@ class ZiToolsImpact(GeneralPlugin):
 
     @objc.python_method
     def start(self):
+        # UPDATEINTERFACE comes on every mouse-drag event while editing: walk the
+        # info view again only when it is another view, or when the buttons found
+        # last time are gone or unhooked (or none were found, at most every second).
+        found = {'view': None, 'buttons': [], 'time': 0.0}
+
         def hook_current_info_panel(*kwargs):
-            if not Glyphs.font or not Glyphs.font.currentTab: return
-            iv = Glyphs.font.currentTab.infoView()
+            if NSEvent.pressedMouseButtons():
+                return
+            font = Glyphs.font
+            if not font or not font.currentTab: return
+            iv = font.currentTab.infoView()
+            now = time.time()
+            if iv is found['view'] and \
+                    all(btn.window() is not None and isinstance(btn.target(), UnicodeHandler)
+                        for btn in found['buttons']) and \
+                    (found['buttons'] or now - found['time'] < 1.0):
+                return
             buttons = find_buttons_with_action(iv, "showInUnicodeChecker")
+            found.update(view=iv, buttons=buttons, time=now)
 
             if not buttons:
                 return
